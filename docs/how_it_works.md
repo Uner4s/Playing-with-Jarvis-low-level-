@@ -1,23 +1,23 @@
-# Cómo funciona Jarvis
+# How Jarvis Works
 
-Documentación técnica del script `bienvenido_jarvis.py`.
+Technical documentation for the `bienvenido_jarvis.py` script.
 
 ---
 
-## Visión general
+## Overview
 
-El script escucha el micrófono de forma continua en un hilo de audio dedicado. Cuando detecta dos aplausos dentro de una ventana de tiempo, dispara una secuencia de bienvenida: reproduce un mensaje de voz, abre YouTube y organiza dos apps en pantalla.
+The script continuously listens to the microphone on a dedicated audio thread. When it detects two claps within a time window, it triggers a welcome sequence: plays a voice message, opens YouTube, and arranges two apps on screen.
 
 ```
-Micrófono
+Microphone
    │
    ▼
-audio_callback()   ← hilo de sounddevice (tiempo real)
+audio_callback()   ← sounddevice thread (real-time)
    │
-   ├── mide RMS del bloque de audio
-   ├── compara con THRESHOLD
-   ├── registra timestamp del aplauso
-   └── si count >= 2 → dispara secuencia_bienvenida() en nuevo hilo
+   ├── measures RMS of audio block
+   ├── compares against THRESHOLD
+   ├── records clap timestamp
+   └── if count >= 2 → fires secuencia_bienvenida() in a new thread
                               │
                               ├── hablar()
                               ├── abrir_youtube()
@@ -26,124 +26,124 @@ audio_callback()   ← hilo de sounddevice (tiempo real)
 
 ---
 
-## Pipeline de detección de audio
+## Audio detection pipeline
 
-### 1. Captura de audio (`sounddevice.InputStream`)
+### 1. Audio capture (`sounddevice.InputStream`)
 
-- **Sample rate:** 44100 Hz (calidad CD)
-- **Block size:** 2205 muestras = 50 ms por bloque
-- El stream llama a `audio_callback()` cada 50 ms con el bloque de audio fresco
+- **Sample rate:** 44100 Hz (CD quality)
+- **Block size:** 2205 samples = 50 ms per block
+- The stream calls `audio_callback()` every 50 ms with a fresh audio block
 
-### 2. Cálculo de RMS
+### 2. RMS calculation
 
 ```python
 rms = float(np.sqrt(np.mean(indata ** 2)))
 ```
 
-El RMS (Root Mean Square) mide la energía sonora del bloque. Un aplauso genera un pico de energía muy por encima del ruido ambiente. El valor está normalizado en el rango `[0.0, 1.0]`.
+RMS (Root Mean Square) measures the sound energy of the block. A clap generates an energy spike well above ambient noise. The value is normalized in the range `[0.0, 1.0]`.
 
-### 3. Lógica de doble aplauso
+### 3. Double-clap logic
 
 ```
 rms > THRESHOLD
        │
-       ├── ¿último aplauso fue hace menos de COOLDOWN? → ignorar (mismo aplauso)
+       ├── last clap was less than COOLDOWN ago? → ignore (same clap)
        │
-       └── registrar timestamp
+       └── record timestamp
                │
-               └── limpiar aplausos fuera de DOUBLE_WINDOW
+               └── discard claps outside DOUBLE_WINDOW
                        │
-                       └── ¿count >= 2? → TRIGGER
+                       └── count >= 2? → TRIGGER
 ```
 
-| Constante       | Valor default | Efecto |
+| Constant        | Default value | Effect |
 |----------------|--------------|--------|
-| `THRESHOLD`    | `0.20`       | Sensibilidad: sube si hay falsos positivos, baja si no detecta |
-| `COOLDOWN`     | `0.1 s`      | Evita que un solo aplauso cuente dos veces |
-| `DOUBLE_WINDOW`| `2.0 s`      | Tiempo máximo entre el primer y segundo aplauso |
+| `THRESHOLD`    | `0.20`       | Sensitivity: raise to reduce false positives, lower if not detecting |
+| `COOLDOWN`     | `0.1 s`      | Prevents a single clap from counting twice |
+| `DOUBLE_WINDOW`| `2.0 s`      | Maximum time between first and second clap |
 
-### 4. Concurrencia y thread safety
+### 4. Concurrency and thread safety
 
-- `audio_callback` corre en el hilo de sounddevice (tiempo real, no bloquear)
-- El estado compartido (`clap_times`, `triggered`) está protegido con `threading.Lock()`
-- La secuencia de bienvenida corre en un hilo daemon separado para no bloquear la escucha
-- `triggered = True` durante la secuencia evita re-disparos; se resetea a `False` después de 8 s en el hilo principal
+- `audio_callback` runs on the sounddevice thread (real-time, do not block)
+- Shared state (`clap_times`, `triggered`) is protected with `threading.Lock()`
+- The welcome sequence runs in a separate daemon thread so it doesn't block listening
+- `triggered = True` during the sequence prevents re-triggering; reset to `False` after 8 s in the main thread
 
 ---
 
-## Secuencia de bienvenida
+## Welcome sequence
 
 ### `hablar(texto)`
 
-1. Intenta `say -v Monica <texto>` (voz española de macOS, alta calidad, sin API key)
-2. Si falla (Monica no disponible), usa `pyttsx3`:
-   - Busca voces con `"es"` en el ID o `"spanish"` en el nombre
-   - Fallback a voz por defecto si no encuentra español
+1. Tries `say -v Monica <texto>` (Spanish macOS voice, high quality, no API key)
+2. If it fails (Monica not available), falls back to `pyttsx3`:
+   - Searches for voices with `"es"` in the ID or `"spanish"` in the name
+   - Falls back to the default voice if no Spanish voice is found
 
 ### `abrir_youtube()`
 
-Abre `YOUTUBE_URL` con `webbrowser.open()` (usa el navegador por defecto del sistema).
+Opens `YOUTUBE_URL` with `webbrowser.open()` (uses the system's default browser).
 
 ### `abrir_apps_lado_a_lado()`
 
-1. Obtiene la resolución de pantalla via AppleScript + Finder
-2. Abre la app Claude con `open -a Claude`
-3. Busca el CLI de Cursor en paths conocidos y lo abre con `NEW_PROJECT`
-4. Usa AppleScript para posicionar las ventanas:
-   - Claude: mitad izquierda `(0, 0, mitad, alto)`
-   - Cursor: mitad derecha `(mitad, 0, mitad, alto)`
+1. Gets screen resolution via AppleScript + Finder
+2. Opens the Claude app with `open -a Claude`
+3. Searches for the Cursor CLI in known paths and opens it with `NEW_PROJECT`
+4. Uses AppleScript to position the windows:
+   - Claude: left half `(0, 0, half, height)`
+   - Cursor: right half `(half, 0, half, height)`
 
 ---
 
-## Flujo del hilo principal (`main`)
+## Main thread flow (`main`)
 
 ```
 main()
-  └── sd.InputStream (activo)
+  └── sd.InputStream (active)
         └── loop: sleep 0.1s
-              └── si triggered:
-                    sleep 8s  ← espera que termine la secuencia
+              └── if triggered:
+                    sleep 8s  ← waits for sequence to finish
                     triggered = False
-                    vuelve a escuchar
+                    back to listening
 ```
 
 ---
 
-## Constantes de configuración
+## Configuration constants
 
-Todas están al inicio del archivo para facilitar ajuste sin tocar la lógica:
+All located at the top of the file for easy tuning without touching the logic:
 
 ```python
-SAMPLE_RATE    = 44100          # Hz de captura de audio
-BLOCK_SIZE     = int(44100 * 0.05)  # muestras por bloque (50 ms)
-THRESHOLD      = 0.20           # energía mínima para detectar aplauso
-COOLDOWN       = 0.1            # segundos mínimos entre aplausos
-DOUBLE_WINDOW  = 2.0            # ventana para contar 2 aplausos
+SAMPLE_RATE    = 44100          # audio capture rate in Hz
+BLOCK_SIZE     = int(44100 * 0.05)  # samples per block (50 ms)
+THRESHOLD      = 0.20           # minimum energy to detect a clap
+COOLDOWN       = 0.1            # minimum seconds between claps
+DOUBLE_WINDOW  = 2.0            # window to count 2 claps
 
-YOUTUBE_URL    = "..."          # URL a abrir
-MENSAJE        = "..."          # texto que dice la voz
-NEW_PROJECT    = "..."          # carpeta que abre Cursor
+YOUTUBE_URL    = "..."          # URL to open
+MENSAJE        = "..."          # text spoken by the voice
+NEW_PROJECT    = "..."          # folder opened in Cursor
 ```
 
 ---
 
-## Dependencias
+## Dependencies
 
-| Paquete       | Uso |
+| Package       | Use |
 |--------------|-----|
-| `sounddevice` | Captura de audio del micrófono |
-| `numpy`       | Cálculo de RMS sobre el buffer |
-| `pyttsx3`     | TTS fallback si `say` falla |
+| `sounddevice` | Microphone audio capture |
+| `numpy`       | RMS calculation on the buffer |
+| `pyttsx3`     | TTS fallback if `say` fails |
 | `subprocess`  | `say`, `open`, `osascript`, `cursor` |
-| `webbrowser`  | Abrir YouTube en el browser por defecto |
-| `threading`   | Hilo para la secuencia + Lock para estado compartido |
+| `webbrowser`  | Open YouTube in the default browser |
+| `threading`   | Thread for the sequence + Lock for shared state |
 
 ---
 
-## Limitaciones conocidas
+## Known limitations
 
-- **macOS únicamente:** usa `say`, `open -a`, `osascript`, Finder
-- **Apps hardcodeadas:** abre Claude y Cursor específicamente
-- **Tiempo de reset hardcodeado:** 8 s fijos en `main()`, no espera al thread real
-- **`COOLDOWN` corto:** 100 ms puede ser insuficiente para aplausos muy fuertes que generan eco
-- **Sin config externa:** todo se configura editando el fuente directamente
+- **macOS only:** uses `say`, `open -a`, `osascript`, Finder
+- **Hardcoded apps:** specifically opens Claude and Cursor
+- **Hardcoded reset time:** fixed 8 s in `main()`, does not wait for the actual thread
+- **Short `COOLDOWN`:** 100 ms may be insufficient for very loud claps that generate echo
+- **No external config:** everything is configured by editing the source directly
