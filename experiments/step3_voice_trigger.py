@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-PASO 3 — Trigger por frases de voz con Whisper.
+STEP 3 — Voice phrase trigger with Whisper.
 
-Escucha el micrófono, transcribe lo que decís y busca frases clave.
-Cada frase dispara una respuesta distinta.
+Listens to the microphone, transcribes speech and looks for key phrases.
+Each phrase fires a different response.
 
-Uso:
-    python3 experiments/paso3_voz_trigger.py
+Usage:
+    python3 experiments/step3_voice_trigger.py
 
-Nota: la primera vez descarga el modelo (~74MB), después queda en caché.
+Note: first run downloads the model (~74MB), then it's cached.
 """
 
 import numpy as np
@@ -19,14 +19,14 @@ import time
 from faster_whisper import WhisperModel
 
 SAMPLE_RATE      = 44100
-VOICE_THRESHOLD  = 0.01   # RMS mínimo para detectar voz
-SILENCE_FRAMES   = 25     # frames de silencio para cortar la grabación
-MAX_FRAMES       = 200    # máximo de frames (~4 seg)
+VOICE_THRESHOLD  = 0.01   # minimum RMS to detect voice
+SILENCE_FRAMES   = 25     # silence frames to cut the recording
+MAX_FRAMES       = 200    # maximum frames (~4 sec)
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Frases trigger → respuesta
-#  Cada entrada: (palabras_clave, respuesta)
-#  Se activa si TODAS las palabras clave aparecen en lo transcripto.
+#  Voice phrase triggers → response
+#  Each entry: (keywords, response)
+#  Fires if ALL keywords appear in the transcribed text.
 # ──────────────────────────────────────────────────────────────────────────────
 TRIGGERS = [
     (["hola", "jarvis"],       "Hola señor Nicolás, ¿en qué le puedo ayudar?"),
@@ -37,125 +37,125 @@ TRIGGERS = [
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  TTS — misma función que el script principal
+#  TTS — same function as the main script
 # ──────────────────────────────────────────────────────────────────────────────
-def hablar(texto: str):
-    print(f"  🔊  {texto}")
-    subprocess.run(["say", "-v", "Mónica", texto], capture_output=True)
+def speak(text: str):
+    print(f"  🔊  {text}")
+    subprocess.run(["say", "-v", "Mónica", text], capture_output=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Matching de frases
+#  Phrase matching
 # ──────────────────────────────────────────────────────────────────────────────
-def buscar_trigger(texto: str) -> str | None:
-    """Busca el primer trigger cuyas palabras clave aparecen en el texto."""
-    texto_lower = texto.lower().strip()
-    for palabras_clave, respuesta in TRIGGERS:
-        if all(p in texto_lower for p in palabras_clave):
-            return respuesta
+def find_trigger(text: str) -> str | None:
+    """Finds the first trigger whose keywords all appear in the text."""
+    text_lower = text.lower().strip()
+    for keywords, response in TRIGGERS:
+        if all(p in text_lower for p in keywords):
+            return response
     return None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Procesamiento de audio capturado
+#  Processing of captured audio
 # ──────────────────────────────────────────────────────────────────────────────
-def procesar_audio(audio: np.ndarray, modelo: WhisperModel):
-    segments, info = modelo.transcribe(
+def process_audio(audio: np.ndarray, model: WhisperModel):
+    segments, info = model.transcribe(
         audio,
         language="es",
-        beam_size=1,         # más rápido, suficiente para frases cortas
-        vad_filter=True,     # filtra silencio internamente
+        beam_size=1,         # faster, sufficient for short phrases
+        vad_filter=True,     # filters silence internally
     )
-    texto = " ".join(s.text for s in segments).strip()
+    text = " ".join(s.text for s in segments).strip()
 
-    if not texto:
-        print("  (no se entendió nada)\n")
+    if not text:
+        print("  (nothing was understood)\n")
         return
 
-    print(f"  📝 Escuché: \"{texto}\"")
+    print(f"  📝 Heard: \"{text}\"")
 
-    respuesta = buscar_trigger(texto)
-    if respuesta:
-        print(f"  ✅ Trigger detectado!")
-        hablar(respuesta)
+    response = find_trigger(text)
+    if response:
+        print(f"  ✅ Trigger detected!")
+        speak(response)
     else:
-        print(f"  — No es un trigger.\n")
+        print(f"  — Not a trigger.\n")
 
-    print("  👂 Escuchando...\n")
+    print("  👂 Listening...\n")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Captura de audio en tiempo real
+#  Real-time audio capture
 # ──────────────────────────────────────────────────────────────────────────────
-buffer          = []
-grabando        = False
-frames_silencio = 0
-procesando      = False
-lock            = threading.Lock()
-modelo_global   = None
+buffer         = []
+recording      = False
+silence_frames = 0
+processing     = False
+lock           = threading.Lock()
+global_model   = None
 
 
 def audio_callback(indata, frames, time_info, status):
-    global buffer, grabando, frames_silencio, procesando
+    global buffer, recording, silence_frames, processing
 
-    if procesando:
+    if processing:
         return
 
     audio = indata.flatten()
     rms   = float(np.sqrt(np.mean(audio ** 2)))
 
     with lock:
-        if not grabando:
+        if not recording:
             if rms > VOICE_THRESHOLD:
-                grabando = True
-                frames_silencio = 0
-                buffer = [audio]
-                print("  🔴 Grabando...", end="", flush=True)
+                recording      = True
+                silence_frames = 0
+                buffer         = [audio]
+                print("  🔴 Recording...", end="", flush=True)
         else:
             buffer.append(audio)
             print(".", end="", flush=True)
 
-            frames_silencio = frames_silencio + 1 if rms < VOICE_THRESHOLD else 0
+            silence_frames = silence_frames + 1 if rms < VOICE_THRESHOLD else 0
 
-            if frames_silencio >= SILENCE_FRAMES or len(buffer) >= MAX_FRAMES:
-                grabando   = False
-                procesando = True
-                audio_completo = np.concatenate(buffer).astype(np.float32)
-                buffer = []
+            if silence_frames >= SILENCE_FRAMES or len(buffer) >= MAX_FRAMES:
+                recording  = False
+                processing = True
+                full_audio = np.concatenate(buffer).astype(np.float32)
+                buffer     = []
                 print()
                 threading.Thread(
-                    target=run_procesamiento,
-                    args=(audio_completo,),
+                    target=run_processing,
+                    args=(full_audio,),
                     daemon=True
                 ).start()
 
 
-def run_procesamiento(audio: np.ndarray):
-    global procesando
-    procesar_audio(audio, modelo_global)
-    procesando = False
+def run_processing(audio: np.ndarray):
+    global processing
+    process_audio(audio, global_model)
+    processing = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Main
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
-    global modelo_global
+    global global_model
 
     print("=" * 55)
-    print("  🤖  PASO 3 — Trigger por voz con Whisper")
+    print("  🤖  STEP 3 — Voice phrase trigger with Whisper")
     print("=" * 55)
-    print("\n  Cargando modelo... (primera vez descarga ~74MB)\n")
+    print("\n  Loading model... (first run downloads ~74MB)\n")
 
-    modelo_global = WhisperModel("base", device="cpu", compute_type="int8")
-    print("  ✅ Modelo listo.\n")
+    global_model = WhisperModel("base", device="cpu", compute_type="int8")
+    print("  ✅ Model ready.\n")
 
-    print("  Frases que reconozco:")
-    for palabras, respuesta in TRIGGERS:
-        print(f"    • \"{' '.join(palabras)}\" → {respuesta}")
+    print("  Phrases I recognize:")
+    for keywords, response in TRIGGERS:
+        print(f"    • \"{' '.join(keywords)}\" → {response}")
 
-    print("\n  Ctrl+C para salir.\n")
-    print("  👂 Escuchando...\n")
+    print("\n  Ctrl+C to exit.\n")
+    print("  👂 Listening...\n")
 
     try:
         with sd.InputStream(
@@ -167,7 +167,7 @@ def main():
             while True:
                 time.sleep(0.1)
     except KeyboardInterrupt:
-        print("\n\nHasta luego! 👋")
+        print("\n\nGoodbye! 👋")
 
 
 if __name__ == "__main__":

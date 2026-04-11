@@ -1,105 +1,106 @@
 # CLAUDE.md — Jarvis Project
 
-Contexto de desarrollo para Claude Code. Leer antes de modificar cualquier cosa.
+Development context for Claude Code. Read before modifying anything.
 
 ---
 
-## Qué es este proyecto
+## What this project is
 
-**Jarvis** es un sistema de automatización personal activado por sonido, pensado para correr en macOS. El script actual detecta dos aplausos por micrófono y ejecuta una secuencia de bienvenida (voz, música, apps).
+**Jarvis** is a personal automation system activated by sound, designed to run on macOS. The current script detects two claps via microphone and runs a welcome sequence (voice, music, apps).
 
-El objetivo es ir agregando funcionalidades propias sobre esta base: nuevos disparadores de sonido, nuevas acciones, configuración externa, etc.
-
----
-
-## Estado actual
-
-### Archivo principal
-- `bienvenido_jarvis.py` — script único, todo en un archivo
-
-### Lo que hace hoy
-1. Escucha el micrófono continuamente
-2. Detecta 2 aplausos dentro de una ventana de 2 segundos
-3. Dice "Bienvenido a casa, señor Tatay" con la voz del sistema
-4. Abre YouTube con una URL fija
-5. Abre Claude y Cursor en pantalla dividida (50/50)
-
-### Documentación técnica
-- `docs/how_it_works.md` — explicación detallada del pipeline de audio, threading y secuencia de bienvenida
+The goal is to incrementally add custom features on top of this base: new sound triggers, new actions, external configuration, etc.
 
 ---
 
-## Arquitectura actual
+## Current state
+
+### Main file
+- `welcome_jarvis.py` — single script, all logic in one file
+
+### What it does today
+1. Continuously listens to the microphone
+2. Detects 2 claps within a 2-second window
+3. Speaks a welcome message using the system voice
+4. Opens YouTube with a fixed URL
+5. Opens Claude on screen
+
+### Technical documentation
+- `docs/how_it_works.md` — detailed explanation of the audio pipeline, threading, and welcome sequence
+
+---
+
+## Current architecture
 
 ```
-bienvenido_jarvis.py
-  ├── Configuración (constantes al inicio)
-  ├── audio_callback()       ← hilo de sounddevice, no bloquear
-  ├── secuencia_bienvenida() ← hilo daemon
-  │     ├── hablar()
-  │     ├── abrir_youtube()
-  │     └── abrir_apps_lado_a_lado()
-  └── main()                 ← loop principal
+welcome_jarvis.py
+  ├── Configuration (constants at the top)
+  ├── audio_callback()    ← sounddevice thread, do not block
+  ├── welcome_sequence()  ← daemon thread
+  │     ├── speak()
+  │     ├── open_youtube()
+  │     └── open_apps()
+  └── main()              ← main loop
 ```
 
-El estado de disparo es global (`triggered`, `clap_times`) protegido con `threading.Lock()`.
+Trigger state is global (`triggered`, `clap_times`) protected with `threading.Lock()`.
 
 ---
 
-## Decisiones de diseño actuales
+## Current design decisions
 
-- **macOS only:** usa `say`, `open -a`, `osascript`. No hay soporte cross-platform todavía.
-- **Script único:** toda la lógica en un archivo. Cuando agreguemos más funcionalidades, habrá que modularizar.
-- **Configuración en el fuente:** las constantes están al inicio del archivo. El siguiente paso natural es moverlas a un archivo de config externo.
-- **Sin API keys:** el TTS usa la voz del sistema (`say -v Monica`), sin dependencias de nube.
+- **macOS only:** uses `say`, `open -a`, `osascript`. No cross-platform support yet.
+- **Single script:** all logic in one file. When more features are added, modularization will be needed.
+- **Config in source:** constants are at the top of the file. The natural next step is moving them to an external config file.
+- **No API keys:** TTS uses the system voice (`say -v Monica`), no cloud dependencies.
 
 ---
 
-## Constantes clave que suelen ajustarse
+## Key constants that are often adjusted
 
 ```python
-THRESHOLD      = 0.20    # subir si hay falsos positivos, bajar si no detecta
-COOLDOWN       = 0.1     # segundos mínimos entre dos picos del mismo aplauso
-DOUBLE_WINDOW  = 2.0     # ventana de tiempo para el segundo aplauso
-MENSAJE        = "..."   # texto que dice la voz
-YOUTUBE_URL    = "..."   # canción a abrir
-NEW_PROJECT    = "..."   # carpeta que abre Cursor
+THRESHOLD      = 0.20    # raise if false positives, lower if not detecting
+COOLDOWN       = 0.1     # minimum seconds between two peaks of the same clap
+DOUBLE_WINDOW  = 2.0     # time window for the second clap
+MESSAGE        = "..."   # text spoken by the voice
+YOUTUBE_URL    = "..."   # song to open
+NEW_PROJECT    = "..."   # folder opened by Cursor
 ```
 
 ---
 
-## Próximas funcionalidades (backlog)
+## Backlog
 
-Estas son ideas a implementar — actualizar esta lista conforme avancemos:
+Ideas to implement — update this list as we progress:
 
-- [ ] Archivo de configuración externo (`config.json` o `config.toml`) para no editar el fuente
-- [ ] Múltiples patrones de sonido (1 aplauso, 3 aplausos, golpe en mesa) → acciones distintas
-- [ ] Sistema de "acciones" configurable: qué apps abrir, qué URL, qué mensaje
-- [ ] Modo debug que muestra el RMS en tiempo real para calibrar THRESHOLD
+- [ ] External config file (`config.json` or `config.toml`) to avoid editing source
+- [ ] Multiple sound patterns (1 clap, 3 claps, desk knock) → different actions
+- [ ] Configurable "actions" system: which apps to open, which URL, which message
+- [ ] Debug mode showing real-time RMS to calibrate THRESHOLD
 - [ ] CLI flags (`--threshold`, `--config`, `--dry-run`)
-- [ ] Modularización: separar detección de audio, acciones y config en módulos distintos
-- [ ] Logging a archivo en vez de solo prints
+- [ ] Modularization: separate audio detection, actions, and config into distinct modules
+- [ ] File logging instead of just prints
 
 ---
 
-## Convenciones para seguir trabajando
+## Conventions
 
-- Mantener las constantes de configuración al inicio del archivo mientras sea un script único
-- No introducir APIs de nube sin necesidad (preferir herramientas del sistema)
-- Comentar en español (el proyecto está en español)
-- Antes de agregar una funcionalidad nueva, actualizar este archivo con lo que se agregó
-- Documentación técnica va en `docs/`
+- Keep configuration constants at the top of the file while it remains a single script
+- Do not introduce cloud APIs unless necessary (prefer system tools)
+- **All code in English:** file names, variables, functions, constants, and in-code comments must always be in English. Project `.md` documentation files are the only exception — they may be written in Spanish.
+- **CLAUDE.md must always be in English**, even if the user communicates in Spanish.
+- Update this file before adding any new feature
+- Technical documentation goes in `docs/`
 
 ---
 
-## Cómo correr el proyecto
+## How to run
 
 ```bash
-# Instalar dependencias
+# Install dependencies
 pip install sounddevice numpy pyttsx3
 
-# Correr
-python bienvenido_jarvis.py
+# Run
+python welcome_jarvis.py
 ```
 
-Requiere permiso de micrófono en macOS (Sistema → Privacidad → Micrófono → Terminal/iTerm).
+Requires microphone permission on macOS (System → Privacy → Microphone → Terminal/iTerm).

@@ -2,13 +2,13 @@
 """
 Double-clap welcome script — Jarvis.
 
-Detecta 2 aplausos → voz dice bienvenido → abre YouTube → abre Claude.
+Detects 2 claps → voice says welcome → opens YouTube → opens Claude.
 
-Dependencias:
+Dependencies:
     pip install sounddevice numpy pyttsx3
 
-Uso:
-    python bienvenido_jarvis.py
+Usage:
+    python welcome_jarvis.py
 """
 
 import os
@@ -23,20 +23,20 @@ import sounddevice as sd
 import pyttsx3
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Configuración
+#  Configuration
 # ──────────────────────────────────────────────────────────────────────────────
 SAMPLE_RATE    = 44100
-THRESHOLD      = 0.15     # RMS mínimo para contar como aplauso  ← ajusta si falla
-COOLDOWN       = 0.1    # segundos de pausa mínima entre aplausos
-DOUBLE_WINDOW  = 3.0     # ventana de tiempo para el segundo aplauso
+THRESHOLD      = 0.15     # minimum RMS to count as a clap  ← adjust if needed
+COOLDOWN       = 0.1      # minimum pause in seconds between claps
+DOUBLE_WINDOW  = 3.0      # time window for the second clap
 
-DEBUG          = False    # activar en True para calibrar THRESHOLD
+DEBUG          = False    # set to True to calibrate THRESHOLD
 
 YOUTUBE_URL    = "https://www.youtube.com/watch?v=hEIexwwiKKU"
-MENSAJE        = "Bienvenido a casa, señor Nicolás."
+MESSAGE        = "Bienvenido a casa, señor Nicolás."
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Estado global
+#  Global state
 # ──────────────────────────────────────────────────────────────────────────────
 clap_times: list[float] = []
 triggered = False
@@ -44,7 +44,7 @@ lock = threading.Lock()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Detección de aplausos
+#  Clap detection
 # ──────────────────────────────────────────────────────────────────────────────
 def audio_callback(indata, frames, time_info, status):
     global triggered, clap_times
@@ -56,80 +56,79 @@ def audio_callback(indata, frames, time_info, status):
     now = time.time()
 
     if DEBUG and rms > 0.01:
-        print(f"  sonido: {rms:.4f}", flush=True)
+        print(f"  sound: {rms:.4f}", flush=True)
 
     if rms > THRESHOLD:
         with lock:
-            # Ignora si estamos en el cooldown del aplauso anterior
+            # Skip if we're in the cooldown period of the previous clap
             if clap_times and (now - clap_times[-1]) < COOLDOWN:
                 return
 
             clap_times.append(now)
-            # Limpia aplausos fuera de la ventana
+            # Remove claps outside the window
             clap_times = [t for t in clap_times if now - t <= DOUBLE_WINDOW]
 
             count = len(clap_times)
-            print(f"  👏  Aplauso {count}/2  (RMS={rms:.3f})")
+            print(f"  👏  Clap {count}/2  (RMS={rms:.3f})")
 
             if count >= 2:
                 triggered = True
                 clap_times = []
-                threading.Thread(target=secuencia_bienvenida, daemon=True).start()
+                threading.Thread(target=welcome_sequence, daemon=True).start()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Secuencia de bienvenida
+#  Welcome sequence
 # ──────────────────────────────────────────────────────────────────────────────
-def secuencia_bienvenida():
-    print("\n🚀  Iniciando secuencia de bienvenida…\n")
+def welcome_sequence():
+    print("\n🚀  Starting welcome sequence…\n")
 
-    hablar(MENSAJE)
-    abrir_youtube()
-    abrir_apps()
+    speak(MESSAGE)
+    open_youtube()
+    open_apps()
 
-    print("\n✅  Secuencia completada.\n")
+    print("\n✅  Sequence complete.\n")
 
 
-def hablar(texto: str):
-    """TTS local con pyttsx3 (usa voces del sistema, sin API key)."""
-    print(f"  🔊  Diciendo: «{texto}»")
+def speak(text: str):
+    """Local TTS with pyttsx3 (uses system voices, no API key)."""
+    print(f"  🔊  Speaking: «{text}»")
 
-    # Primero intenta con el comando 'say' de macOS (mejor calidad)
-    resultado = subprocess.run(
-        ["say", "-v", "Mónica", texto],
+    # First try macOS 'say' command (better quality)
+    result = subprocess.run(
+        ["say", "-v", "Mónica", text],
         capture_output=True
     )
-    if resultado.returncode == 0:
-        return  # éxito con Monica (voz española de macOS)
+    if result.returncode == 0:
+        return  # success with Monica (Spanish macOS voice)
 
     # Fallback: pyttsx3
     engine = pyttsx3.init()
     voices = engine.getProperty("voices")
 
-    # Busca voz en español
+    # Look for a Spanish voice
     esp = [v for v in voices if "es" in v.id.lower() or "spanish" in v.name.lower()]
     if esp:
         engine.setProperty("voice", esp[0].id)
-        print(f"     Voz seleccionada: {esp[0].name}")
+        print(f"     Selected voice: {esp[0].name}")
     else:
-        print("     Usando voz por defecto (no se encontró voz en español)")
+        print("     Using default voice (no Spanish voice found)")
 
     engine.setProperty("rate", 148)
-    engine.say(texto)
+    engine.say(text)
     engine.runAndWait()
 
 
-def abrir_youtube():
-    print(f"  🎵  Abriendo YouTube…")
+def open_youtube():
+    print(f"  🎵  Opening YouTube…")
     webbrowser.open(YOUTUBE_URL)
-    time.sleep(1.2)  # deja que el navegador cargue antes de seguir
+    time.sleep(1.2)  # let the browser load before continuing
 
 
-def abrir_apps():
-    # ── Abre Claude ──────────────────────────────────────────────────────────
-    print("  🤖  Abriendo Claude…")
+def open_apps():
+    # ── Open Claude ──────────────────────────────────────────────────────────
+    print("  🤖  Opening Claude…")
     subprocess.Popen(["open", "-a", "Claude"])
-
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -139,8 +138,8 @@ def main():
     global triggered
 
     print("=" * 55)
-    print("  🎤  Escuchando aplausos… (Ctrl+C para salir)")
-    print(f"  Umbral actual: {THRESHOLD}  (ajusta THRESHOLD si falla)")
+    print("  🎤  Listening for claps… (Ctrl+C to exit)")
+    print(f"  Current threshold: {THRESHOLD}  (adjust THRESHOLD if needed)")
     print("=" * 55)
 
     try:
@@ -153,12 +152,12 @@ def main():
             while True:
                 time.sleep(0.1)
                 if triggered:
-                    # Espera a que la secuencia acabe y vuelve a escuchar
+                    # Wait for the sequence to finish and listen again
                     time.sleep(8)
                     triggered = False
-                    print("\n👂  Escuchando de nuevo…\n")
+                    print("\n👂  Listening again…\n")
     except KeyboardInterrupt:
-        print("\n\nHasta luego! 👋")
+        print("\n\nGoodbye! 👋")
         sys.exit(0)
 
 
