@@ -26,10 +26,10 @@ Have Jarvis understand "hey Jarvis" or "time to work" not because we gave it a m
 
 | File | What it does |
 |---|---|
-| `bienvenido_jarvis.py` | Main script — double clap → welcome + YouTube + Claude |
-| `experiments/paso1_grabar_huella.py` | Records a word and extracts its MFCC fingerprint with pure numpy |
-| `experiments/paso2_comparar.py` | Compares incoming real-time audio against a saved template |
-| `experiments/paso3_voz_trigger.py` | Phrase trigger using Whisper as a reference experiment |
+| `welcome_jarvis.py` | Main script — double clap → welcome + YouTube + Claude |
+| `experiments/step1_record_fingerprint.py` | Records a word and extracts its MFCC fingerprint with pure numpy |
+| `experiments/step2_compare.py` | Compares incoming real-time audio against a saved template |
+| `experiments/step3_voice_trigger.py` | Phrase trigger using Whisper as a reference experiment |
 | `docs/how_it_works.md` | Technical documentation of the audio pipeline and threading |
 
 ## What we learned experimenting
@@ -49,12 +49,12 @@ pip3 install sounddevice numpy pyttsx3 scipy
 
 ```bash
 # Main script (double clap)
-python3 bienvenido_jarvis.py
+python3 welcome_jarvis.py
 
 # Audio experiments
-python3 experiments/paso1_grabar_huella.py
-python3 experiments/paso2_comparar.py
-python3 experiments/paso3_voz_trigger.py
+python3 experiments/step1_record_fingerprint.py
+python3 experiments/step2_compare.py
+python3 experiments/step3_voice_trigger.py
 ```
 
 ## Requirements
